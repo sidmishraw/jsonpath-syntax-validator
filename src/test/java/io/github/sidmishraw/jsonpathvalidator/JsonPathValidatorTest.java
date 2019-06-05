@@ -27,12 +27,16 @@ public class JsonPathValidatorTest {
         Assert.assertTrue(validator.validate("as['*']"));
         Assert.assertTrue(validator.validate("as[*]"));
         Assert.assertTrue(validator.validate("$['as*']"));
+        Assert.assertTrue(validator.validate("as..a"));
+        Assert.assertTrue(validator.validate("as[1+2+3]"));
+        Assert.assertTrue(validator.validate("as['1+2+3']"));
     }
 
     @Test
     public void testInvalidJsonPathExpressions() {
         JsonPathValidator validator = new BasicJsonPathValidator();
-
-        Assert.assertFalse(validator.validate("as[??($.name == @)].value"));
+        Assert.assertFalse(validator.validate("as[??(@.name == 'a')].value"));
+        Assert.assertFalse(validator.validate("a['??kangaroo   \"A\"'][??(@.name == 'a')].value"));
+        Assert.assertFalse(validator.validate("as.*.[??($.name == @)].value"));
     }
 }

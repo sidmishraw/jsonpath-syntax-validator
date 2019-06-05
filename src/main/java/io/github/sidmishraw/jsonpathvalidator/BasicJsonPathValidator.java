@@ -158,16 +158,35 @@ public class BasicJsonPathValidator implements JsonPathValidator {
     }
 
     /**
+     * Tests if the filter operations were properly normalized, if not returns false.
+     *
+     * @param head the front part of the expression to be checked
+     * @param xs   the list of splits
+     * @return true if the filter operation segment was properly preserved post normalization, else returns false.
+     */
+    private boolean isValidFilterOpSegment(String head, List<String> xs) {
+        // if head = ??(@
+        // and xs = [name === 'samba'), value]
+        // then it signifies that the expression was not a valid filter expression
+        // as the normalization broke the expression
+        //
+        if (head.matches("^\\?+\\(.*") && !xs.isEmpty() && xs.get(0).matches(".*\\)$"))
+            return false;
+        return true;
+    }
+
+    /**
      * Parses the JSON path expression. Depending upon the various path segment patterns, stores the path segments into {@link #paths}.
      *
      * @param jsonPathExpression the JSON path expression
      * @param path               the current path segment
+     * @throws BadJsonPathSyntaxException when the segment is a bad segment.
      */
-    private void trace(String jsonPathExpression, String path) {
+    private void trace(String jsonPathExpression, String path) throws BadJsonPathSyntaxException {
         if (null != jsonPathExpression && !jsonPathExpression.isEmpty()) {
-            var x = Stream.of(jsonPathExpression.split(";")).collect(Collectors.toList());
-            var loc = x.remove(0);
-            var exp = x.stream().collect(Collectors.joining(";"));
+            var xs = Stream.of(jsonPathExpression.split(";")).collect(Collectors.toList());
+            var loc = xs.remove(0);
+            var exp = xs.stream().collect(Collectors.joining(";"));
             // @formatter:off
             if (
                 loc.equals("*") // all indices in array
@@ -176,10 +195,12 @@ public class BasicJsonPathValidator implements JsonPathValidator {
                 || loc.matches("^\\(.*?\\)$") // group
                 || loc.matches("^\\?\\(.*?\\)$") // filter operation
                 || loc.matches("^(-?[0-9]*):(-?[0-9]*):?([0-9]*)$") // pythonic range splits
-                || !loc.matches("^\".*\"$")
+                || isValidFilterOpSegment(loc, xs) // check if the filter conditions were preserved properly
             )
             // @formatter:on
                 trace(exp, path + ";" + loc);
+            else
+                throw new BadJsonPathSyntaxException(path, loc, xs);
         } else
             store(path);
     }
@@ -187,7 +208,12 @@ public class BasicJsonPathValidator implements JsonPathValidator {
     @Override
     public boolean validate(String jsonPathExpression) {
         var normalizedJsonPathExpression = normalize(jsonPathExpression);
-        trace(normalizedJsonPathExpression.replaceFirst("^\\$;", ""), "$");
+        try {
+            trace(normalizedJsonPathExpression.replaceFirst("^\\$;", ""), "$");
+        } catch (BadJsonPathSyntaxException e) {
+            log.error(e.getMessage());
+            return false;
+        }
         return !paths.isEmpty();
     }
 
